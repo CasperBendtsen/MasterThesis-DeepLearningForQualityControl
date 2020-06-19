@@ -1,0 +1,125 @@
+namespace VM.Scripting {
+	using System;
+	using VM;
+	using VM.Blobs;
+	using VM.Image;
+	using VM.Image.IppNew;
+	using VM.Blobs.Prediction;
+	using VM.Lab.Script;
+	using System.IO;
+	using System.Xml.Serialization;
+	using VM.Image.IO;
+	using System.Drawing;
+	using System.Collections.Generic;
+                
+	public class CustomScript : VM.Lab.Script.IScriptInOutFeatures {
+		public virtual VM.Image.VMImage[] Operate(VM.Image.VMImage inputImage, out System.Single[] features) {
+                                               
+			// This script reads all HIPS images in the folder of the currently selected image
+			// and extract the specified band and region and saves the image to the
+			// specified directory in the specified standard format (jpg, bmp, png, wmf, gif and more)
+			
+			// Input: An image in the same folder as the images that will be converted
+			// Output: The specified part of the images in specified image format
+			
+			// ----------
+			// INPUT DATA
+			// ----------
+			
+			// Number of band extracted
+			int bandNumber = 6; // Remember to subtract 1 from the number shown in VideometerLab			
+			
+			// Full Path for output images - null for directory of current image
+			string outputPath = null; //@"C:\Users\A282_OS\Desktop\Test";  //"C:\Users\A282_OS\Desktop\SEM"; 
+			
+			// Format of output images - remember to the DOT!
+			const string outputFormat = ".png"; // or ".png", ".bmp", ".tiff", ".gif" and ".wmf"
+			
+			// Region of image to extract: Use (0,0) and (-1,-1) for entire image			
+			int x1 = 275; //[0] Region of interest (x1,y1)->(x2,y2) both included
+			int y1 = 880; //[0]
+			int x2 = 2135; // End point: x1+Width-1 (-1 for entire image)
+			int y2 = 2800; // End point: y1+Height-1 (-1 for entire image)
+			
+			// Maximize ROI 
+			if (x2 < 0) x2 = inputImage.ImageWidth-1;
+			if (y2 < 0) y2 = inputImage.ImageHeight-1;			
+			
+			// Check validity of all points			
+			if (!(x1 >= 0 && x1 < inputImage.ImageWidth) ||
+				!(x2 >= 0 && x2 < inputImage.ImageWidth) ||
+				!(x2 >= x1) ||
+				!(y1 >= 0 && y1 < inputImage.ImageHeight) ||
+				!(y2 >= 0 && y2 < inputImage.ImageHeight) ||
+				!(y2 >= y1))
+			{
+				System.Windows.Forms.MessageBox.Show("Region of interest is not valid");
+				features = null;
+				return null;
+			}
+			
+			// Image to hold the current image band
+			//VMImage imageBand = inputImage.CreateEqual(inputImage.DataFormat,1);
+			VMImage imageBand = new VMImage(x2-x1+1,y2-y1+1,inputImage.DataFormat,1);			
+
+			// Get all images in path of loaded image
+			string dirname = Path.GetDirectoryName(inputImage.ImageFileName);
+			string searchPath = "*.hips";
+			string[] fileNamesInFolder = Directory.GetFiles(dirname, searchPath, SearchOption.TopDirectoryOnly);			
+			
+			// If outputPath is null, use the input dir
+			if (outputPath == null) 
+			{
+				outputPath = dirname;
+			}
+						
+			// Check the existance of outputPath
+			if (!System.IO.Directory.Exists(outputPath)) 
+			{
+				System.Windows.Forms.MessageBox.Show("outputPath is not valid");
+				features = null;
+				return null;
+			}
+			
+			// ------------------
+			// LOOP ALL THE FILES
+			// ------------------
+			foreach (string fileName in fileNamesInFolder)
+			{
+				//------------------------
+				// loop over band numbers
+				//------------------------
+				for (int n=0 ; n<=5; n++)
+				{
+				VMImage image = ImageIO.Load(fileName);
+				
+				// Check the value of bandNumber
+				if (!(bandNumber >= 0 && bandNumber <= image.Bands)) 
+				{	
+					System.Windows.Forms.MessageBox.Show("bandNunber out of range");
+					features = null;
+					return null;
+				}
+					bandNumber = n; // Remember to subtract 1 from the number shown in VideometerLab
+					
+					// Set ROI - we assume all images are the same size so ROI makes sense
+					image.SetRoi(x1,y1,(x2-x1+1),(y2-y1+1));
+												
+					// Extract the band of interest
+					IppData.Copy(image,bandNumber,imageBand,0);
+				
+					//var dir = Path.GetDirectoryName(fileName);
+					//var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+					//var newFileNameFull = Path.Combine(dir, string.Format("{0}.jpg", fileNameWithoutExtension));
+					//int mkdir(Path.Combine(outputPath, Path.GetFileNameWithoutExtension(fileName) + outputFormat));
+					ImageIO.Save(imageBand, Path.Combine(outputPath, Path.GetFileNameWithoutExtension(fileName)+ bandNumber + outputFormat));
+					image.Free();
+				}
+			}
+                                 
+			imageBand.Free();
+			features = null;
+			return null;
+		}
+	}
+}
